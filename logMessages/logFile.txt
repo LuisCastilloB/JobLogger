@@ -1,0 +1,2 @@
+ene 17, 2020 3:11:59 PM JobLogger LogMessage
+INFORMACIÓN: Message:17 de enero de 2020->This is a Info Log Message for the File

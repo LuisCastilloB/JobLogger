@@ -1,107 +1,107 @@
 import java.io.File;
-import java.sql.Connection;
-import java.sql.DriverManager;
-import java.sql.Statement;
 import java.text.DateFormat;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.Properties;
 import java.util.logging.ConsoleHandler;
 import java.util.logging.FileHandler;
-import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.logging.SimpleFormatter;
 
 public class JobLogger {
-	private static boolean logToFile;
-	private static boolean logToConsole;
-	private static boolean logMessage;
-	private static boolean logWarning;
-	private static boolean logError;
-	private static boolean logToDatabase;
-	private boolean initialized;
-	private static Map dbParams;
-	private static Logger logger;
-
-	public JobLogger(boolean logToFileParam, boolean logToConsoleParam, boolean logToDatabaseParam,
-			boolean logMessageParam, boolean logWarningParam, boolean logErrorParam, Map dbParamsMap) {
-		logger = Logger.getLogger("MyLog");  
-		logError = logErrorParam;
-		logMessage = logMessageParam;
-		logWarning = logWarningParam;
-		logToDatabase = logToDatabaseParam;
-		logToFile = logToFileParam;
-		logToConsole = logToConsoleParam;
-		dbParams = dbParamsMap;
+	
+	private static Logger logger = Logger.getLogger("MyLog");
+	private static Map<Integer, String> logTypes = new HashMap<Integer, String>();
+	private static Integer[] logDestinations = {1, 2, 3};
+	private static String fileName = "logFile.txt";
+	
+	/**
+	 * Define the types of message
+	 */
+	public JobLogger() {
+		logTypes.put(1, "Message");
+		logTypes.put(2, "Error");
+		logTypes.put(3, "Warning");
 	}
-
-	public static void LogMessage(String messageText, boolean message, boolean warning, boolean error) throws Exception {
-		messageText.trim();
-		if (messageText == null || messageText.length() == 0) {
-			return;
+	
+	/**
+	 * Process the message log
+	 * @param logDestination = (1 -> To File, 2-> To Console, 3 -> To DB)
+	 * @param logType = (1 -> Message, 2-> Error , 3-> Warning)
+	 * @param logFileFolder = Path to save the log file Ej: (../Logs/Folder)
+	 * @return
+	 * @throws Exception
+	 */
+	public static void LogMessage(String messageText, int logType, int logDestination, String logFileFolder) throws Exception {
+			
+		messageText = messageText.trim();
+		logValidation(messageText, logType, logDestination, logFileFolder);
+		
+		String logMessage = logTypes.get(logType) + ":" + DateFormat.getDateInstance(DateFormat.LONG).format(new Date()) + "->" + messageText;
+		switch (logDestination) {
+			case 1 :
+				String Path = "" + logFileFolder + "/" + fileName;
+				File logFile = new File(Path);
+				if (!logFile.exists()) {
+					logFile.createNewFile();
+				}
+				FileHandler fh = new FileHandler(""+logFileFolder + "/" + fileName);
+				logger.addHandler(fh);
+				SimpleFormatter formatter = new SimpleFormatter();  		
+			    fh.setFormatter(formatter);  
+			    logger.info(logMessage);  
+				break;
+			case 2:
+				ConsoleHandler ch = new ConsoleHandler();
+				logger.addHandler(ch);
+			    logger.info(logMessage);  
+				break;
+			case 3:
+				DBConnector Db = new DBConnector();
+				Db.execute("insert into Log_Values Values ('" + logMessage + "', " + logType + ")");
+				break;
 		}
-		if (!logToConsole && !logToFile && !logToDatabase) {
-			throw new Exception("Invalid configuration");
-		}
-		if ((!logError && !logMessage && !logWarning) || (!message && !warning && !error)) {
-			throw new Exception("Error or Warning or Message must be specified");
-		}
-
-		Connection connection = null;
-		Properties connectionProps = new Properties();
-		connectionProps.put("user", dbParams.get("userName"));
-		connectionProps.put("password", dbParams.get("password"));
-
-		connection = DriverManager.getConnection("jdbc:" + dbParams.get("dbms") + "://" + dbParams.get("serverName")
-				+ ":" + dbParams.get("portNumber") + "/", connectionProps);
-
-		int t = 0;
-		if (message && logMessage) {
-			t = 1;
-		}
-
-		if (error && logError) {
-			t = 2;
-		}
-
-		if (warning && logWarning) {
-			t = 3;
-		}
-
-		Statement stmt = connection.createStatement();
-
-		String l = null;
-		File logFile = new File(dbParams.get("logFileFolder") + "/logFile.txt");
-		if (!logFile.exists()) {
-			logFile.createNewFile();
+	}
+	
+	/**
+	 * Validate the log information
+	 * @param messageText
+	 * @param logType
+	 * @param logDestination
+	 * @param logFileFolder
+	 * @throws Exception
+	 */
+	public static void logValidation(String messageText, int logType, int logDestination, String logFileFolder) throws Exception {
+		
+		if (messageText.isEmpty()) {
+			throw new Exception("The log message is empty");
 		}
 		
-		FileHandler fh = new FileHandler(dbParams.get("logFileFolder") + "/logFile.txt");
-		ConsoleHandler ch = new ConsoleHandler();
-		
-		if (error && logError) {
-			l = l + "error " + DateFormat.getDateInstance(DateFormat.LONG).format(new Date()) + messageText;
+		if (logFileFolder.isEmpty()) {
+			throw new Exception("The logFolder is not valid");
 		}
-
-		if (warning && logWarning) {
-			l = l + "warning " +DateFormat.getDateInstance(DateFormat.LONG).format(new Date()) + messageText;
+				
+		boolean correctLogType = false;
+		for (int key : logTypes.keySet()) {
+		    if (key == logType) {
+		    	correctLogType = true;
+		    	break;
+		    }
 		}
-
-		if (message && logMessage) {
-			l = l + "message " +DateFormat.getDateInstance(DateFormat.LONG).format(new Date()) + messageText;
-		}
-		
-		if(logToFile) {
-			logger.addHandler(fh);
-			logger.log(Level.INFO, messageText);
+		if (!correctLogType) {
+			throw new Exception("The logType ("+ logType + ") is not valid");
 		}
 		
-		if(logToConsole) {
-			logger.addHandler(ch);
-			logger.log(Level.INFO, messageText);
+		boolean correctLogDestination = false;
+		for (int element : logDestinations) {
+		    if (element == logDestination) {
+		    	correctLogDestination = true;
+		        break;
+		    }
 		}
-		
-		if(logToDatabase) {
-			stmt.executeUpdate("insert into Log_Values('" + message + "', " + String.valueOf(t) + ")");
+		if (!correctLogDestination) {
+			throw new Exception("The logDestination ("+ logDestination + ") is not valid");
 		}
 	}
 }
+
